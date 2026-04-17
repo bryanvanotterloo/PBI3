@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chain Ascension</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #060613;
+  color: #ccccea;
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 14px 40px;
+}
+
+.game-title {
+  font-size: 2.2em;
+  font-weight: 900;
+  letter-spacing: 4px;
+  background: linear-gradient(120deg, #38cfff 0%, #a855ff 45%, #ff9a3c 90%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+}
+
+.game-sub {
+  color: #383860;
+  font-size: 0.78em;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 18px;
+}
+
+.game-layout {
+  display: grid;
+  grid-template-columns: 1fr 288px;
+  gap: 12px;
+  width: 100%;
+  max-width: 980px;
+}
+
+@media (max-width: 720px) {
+  .game-layout { grid-template-columns: 1fr; }
+}
+
+.left-col { display: flex; flex-direction: column; gap: 12px; }
+
+.panel {
+  background: #0c0c22;
+  border: 1px solid #1a1a38;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.panel-title {
+  font-size: 0.67em;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #333360;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #12122e;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ── STATS ── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.stat-box {
+  background: #060613;
+  border: 1px solid #12122e;
+  border-radius: 8px;
+  padding: 9px 6px;
+  text-align: center;
+}
+
+.stat-val {
+  font-size: 1.25em;
+  font-weight: 800;
+  color: #9060ee;
+  line-height: 1;
+}
+
+.stat-lbl {
+  font-size: 0.6em;
+  color: #303058;
+  margin-top: 4px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ── BAR LIST ── */
+#bar-list {
+  height: 560px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  padding-right: 2px;
+}
+
+#bar-list::-webkit-scrollbar { width: 4px; }
+#bar-list::-webkit-scrollbar-track { background: #060613; }
+#bar-list::-webkit-scrollbar-thumb { background: #18183a; border-radius: 2px; }
+#bar-list::-webkit-scrollbar-thumb:hover { background: #26265a; }
+
+/* ── TIER ── */
+.tier-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 4px 5px;
+  margin-top: 4px;
+  font-size: 0.65em;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-top: 1px solid #12122e;
+}
+
+.tier-section:first-child .tier-header { margin-top: 0; border-top: none; }
+.tier-name { font-weight: 700; }
+.tier-range { color: #222244; }
+
+/* ── BAR ROW ── */
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 4px;
+  border-radius: 5px;
+  opacity: 0.2;
+  transition: opacity 0.5s, background-color 0.4s;
+}
+
+.bar-row.active  { opacity: 1; }
+.bar-row.filling { background-color: #0d0d26; }
+#br0             { opacity: 1; }
+
+.bar-num {
+  width: 20px;
+  font-size: 0.61em;
+  color: #242450;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-name-lbl {
+  width: 118px;
+  font-size: 0.71em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.bar-track {
+  flex: 1;
+  height: 13px;
+  background: #06060f;
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid #101028;
+  min-width: 30px;
+  position: relative;
+}
+
+.bar-turbo-lbl {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62em;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.95);
+  pointer-events: none;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 7px;
+  transition: width 0.06s linear;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shimmer only on actively-filling bars */
+.bar-row.filling .bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -100%; width: 60%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+  animation: sh 2s infinite linear;
+}
+@keyframes sh { to { left: 200%; } }
+
+/* Turbo mode — bar 0 locked at 100%, animated gold sweep */
+.bar-fill.turbo {
+  background: linear-gradient(90deg, #aa5500 0%, #ffdd00 35%, #ff9900 55%, #ffdd00 75%, #aa5500 100%);
+  background-size: 200% 100%;
+  animation: turboFlow 0.45s linear infinite;
+  width: 100% !important;
+}
+.bar-fill.turbo::after { display: none !important; }
+@keyframes turboFlow {
+  0%   { background-position: 0% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Tier fill colors */
+.t0 { background: linear-gradient(90deg, #1a90cc, #38cfff); }
+.t1 { background: linear-gradient(90deg, #cc3012, #ff7050); }
+.t2 { background: linear-gradient(90deg, #3080cc, #80d8ff); }
+.t3 { background: linear-gradient(90deg, #886030, #c4a87a); }
+.t4 { background: linear-gradient(90deg, #6018cc, #c080ff); }
+.t5 { background: linear-gradient(90deg, #303090, #7878cc); }
+.t6 { background: linear-gradient(90deg, #108844, #40ff80); }
+.t7 { background: linear-gradient(90deg, #1248cc, #4494ff); }
+.t8 { background: linear-gradient(90deg, #cc5010, #ff9040); }
+.t9 { background: linear-gradient(90deg, #aa8800, #ffe840); }
+
+.bar-pct-lbl {
+  width: 38px;
+  text-align: right;
+  font-size: 0.66em;
+  color: #404070;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.bar-row.active .bar-pct-lbl { color: #7070aa; }
+
+.bar-cnt-lbl {
+  width: 68px;
+  text-align: right;
+  font-size: 0.61em;
+  color: #46468b;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.bar-row.active .bar-cnt-lbl { color: #404075; }
+.bar-cnt-lbl .comp-bonus { color: #cc8820; }
+
+/* ── FRONTIER BUTTON ── */
+.frontier-btn {
+  font-size: 0.9em;
+  padding: 3px 10px;
+  background: #0e0e30;
+  border: 1px solid #1c1c50;
+  border-radius: 5px;
+  color: #404080;
+  cursor: pointer;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
+  transition: background 0.15s, color 0.15s;
+}
+.frontier-btn:hover { background: #161650; color: #7070bb; }
+
+/* ── PRESTIGE ── */
+.prestige-btn {
+  width: 100%;
+  padding: 13px;
+  font-size: 0.95em;
+  font-weight: 800;
+  letter-spacing: 2px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  background: linear-gradient(120deg, #cc2222, #ff8800);
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  box-shadow: 0 0 18px #cc222228;
+  transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+}
+.prestige-btn:not(:disabled):hover {
+  opacity: 0.9; transform: translateY(-1px);
+  box-shadow: 0 0 28px #cc222255;
+}
+.prestige-btn:not(:disabled):active { transform: none; }
+.prestige-btn:disabled {
+  background: #12122a; color: #242448;
+  cursor: not-allowed; box-shadow: none;
+}
+
+.prestige-hint {
+  font-size: 0.74em;
+  color: #303060;
+  text-align: center;
+  margin-top: 9px;
+  min-height: 1em;
+}
+
+/* ── SHOP ── */
+.shop-item {
+  background: #060613;
+  border: 1px solid #12122e;
+  border-radius: 9px;
+  padding: 9px 10px;
+  margin-bottom: 7px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  transition: border-color 0.2s;
+}
+.shop-item:last-child { margin-bottom: 0; }
+.shop-item.can-afford { border-color: #1e1058; }
+
+.shop-info { flex: 1; min-width: 0; }
+
+.shop-name {
+  font-size: 0.8em;
+  font-weight: 700;
+  color: #a080ff;
+  margin-bottom: 2px;
+}
+.shop-desc { font-size: 0.66em; color: #46468b; margin-bottom: 3px; }
+.shop-eff  { font-size: 0.66em; color: #404080; }
+.shop-lv   { font-size: 0.6em;  color: #222242; margin-left: 5px; }
+
+.buy-btn {
+  padding: 5px 9px;
+  font-size: 0.7em;
+  font-weight: 700;
+  border: 1px solid #1c0e4a;
+  background: #0c0828;
+  color: #6040bb;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.buy-btn:hover:not(:disabled) {
+  background: #140c38; border-color: #301888; color: #a070ff;
+}
+.buy-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.buy-btn.maxed {
+  color: #30aa60; border-color: #0e3820;
+  background: #060f0a; cursor: default; opacity: 1;
+}
+
+.reset-row {
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid #0e0e24; text-align: right;
+}
+.reset-row button {
+  font-size: 0.63em; color: #181832;
+  background: none; border: none;
+  cursor: pointer; text-decoration: underline;
+}
+.reset-row button:hover { color: #383870; }
+
+/* ── NOTIFICATIONS ── */
+#notif-container {
+  position: fixed; top: 16px; right: 16px;
+  display: flex; flex-direction: column; gap: 6px;
+  pointer-events: none; z-index: 999;
+}
+.notif {
+  background: #0c0c22; border-left: 3px solid;
+  border-radius: 8px; padding: 7px 13px;
+  font-size: 0.78em; font-weight: 600;
+  max-width: 230px;
+  animation: nIn 0.22s ease, nOut 0.28s ease 1.72s forwards;
+}
+@keyframes nIn  { from { opacity:0; transform:translateX(14px); } to { opacity:1; transform:none; } }
+@keyframes nOut { to   { opacity:0; transform:translateX(8px);  } }
+</style>
+</head>
+<body>
+
+<div class="game-title">CHAIN ASCENSION</div>
+<div class="game-sub">Fill the Chain &bull; Transcend &bull; Ascend</div>
+
+<div class="game-layout">
+  <div class="left-col">
+
+    <!-- Stats -->
+    <div class="panel">
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-val" id="spp">0</div><div class="stat-lbl">PP</div></div>
+        <div class="stat-box"><div class="stat-val" id="spres">0</div><div class="stat-lbl">Prestiges</div></div>
+        <div class="stat-box"><div class="stat-val" id="sfrontier">—</div><div class="stat-lbl">Frontier</div></div>
+        <div class="stat-box"><div class="stat-val" id="srate">—</div><div class="stat-lbl">Rate /s</div></div>
+      </div>
+    </div>
+
+    <!-- Chain -->
+    <div class="panel">
+      <div class="panel-title">
+        The Chain — 100 Bars
+        <button class="frontier-btn" onclick="scrollToFrontier()">↓ Frontier</button>
+      </div>
+      <div id="bar-list"></div>
+    </div>
+
+    <!-- Prestige -->
+    <div class="panel">
+      <div class="panel-title">Transcendence</div>
+      <button class="prestige-btn" id="prestige-btn" onclick="doPrestige()" disabled>✦ PRESTIGE ✦</button>
+      <div class="prestige-hint" id="prestige-hint">Complete Bar 5 to unlock prestige</div>
+    </div>
+
+  </div>
+
+  <!-- Shop -->
+  <div>
+    <div class="panel" style="position:sticky;top:14px;">
+      <div class="panel-title">Prestige Shop</div>
+      <div id="shop-list"></div>
+      <div class="reset-row"><button onclick="resetGame()">Hard Reset</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="notif-container"></div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════
+
+const NUM_BARS       = 100;
+const TICK_MS        = 50;    // 20 ticks/sec
+const BASE_RATE      = 1.0;   // %/tick for bar 0
+const BASE_TRANSFER  = 0.10;  // fraction passed to next bar per completion
+const MIN_PRESTIGE   = 3;     // 0-indexed: bar index 4 = Bar 5 must complete first
+const BAR0_TURBO_THRESHOLD = 25; // %/outer-tick: bar 0 stops moving and streams completions/s
+
+// ═══════════════════════════════════
+//  THEME DATA
+// ═══════════════════════════════════
+
+const TIERS = [
+  { name: 'Aether', color: '#38cfff' },
+  { name: 'Ember',  color: '#ff7050' },
+  { name: 'Frost',  color: '#80d8ff' },
+  { name: 'Stone',  color: '#c4a87a' },
+  { name: 'Storm',  color: '#c080ff' },
+  { name: 'Void',   color: '#7878cc' },
+  { name: 'Bloom',  color: '#40ff80' },
+  { name: 'Tide',   color: '#4494ff' },
+  { name: 'Forge',  color: '#ff9040' },
+  { name: 'Zenith', color: '#ffe840' },
+];
+
+const RANKS = ['Mote','Wisp','Shard','Spark','Surge','Pulse','Wave','Flare','Nova','Apex'];
+
+const BAR_NAMES = Array.from({ length: NUM_BARS }, (_, i) =>
+  `${TIERS[Math.floor(i / 10)].name} ${RANKS[i % 10]}`
+);
+
+// ═══════════════════════════════════
+//  UPGRADES
+// ═══════════════════════════════════
+
+const UPGRADES = [
+  {
+    id: 'speed',
+    name: '⚡ Energy Surge',
+    desc: 'Multiplies base fill rate',
+    baseCost: 1, costMult: 1.7, maxLevel: 30,
+    effLabel: l => `${(1 + l * 0.3).toFixed(1)}× speed`,
+    val:      l => 1 + l * 0.3,
+  },
+  {
+    id: 'transfer',
+    name: '🔗 Chain Efficiency',
+    desc: 'Increases transfer rate between bars',
+    baseCost: 2, costMult: 2.1, maxLevel: 25,
+    effLabel: l => `${Math.round((BASE_TRANSFER + l * 0.04) * 100)}% per fill`,
+    val:      l => BASE_TRANSFER + l * 0.04,
+  },
+  {
+    id: 'multiTick',
+    name: '⚙️ Cascade Engine',
+    desc: 'Processes multiple ticks per frame',
+    baseCost: 10, costMult: 3.8, maxLevel: 8,
+    effLabel: l => `${1 + l}× tick rate`,
+    val:      l => 1 + l,
+  },
+  {
+    id: 'ppBonus',
+    name: '🌟 Prestige Aura',
+    desc: 'Multiplies PP earned on prestige',
+    baseCost: 3, costMult: 1.9, maxLevel: 25,
+    effLabel: l => `${(1 + l * 0.5).toFixed(1)}× PP`,
+    val:      l => 1 + l * 0.5,
+  },
+  {
+    id: 'headStart',
+    name: '🔄 Residual Echo',
+    desc: 'Start with bonus Energy after prestige',
+    baseCost: 5, costMult: 2.2, maxLevel: 20,
+    effLabel: l => `Start at ${l * 5}% Energy`,
+    val:      l => l * 5,
+  },
+];
+
+// ═══════════════════════════════════
+//  STATE
+// ═══════════════════════════════════
+
+function blankState() {
+  return {
+    bars:           new Array(NUM_BARS).fill(0),
+    completions:    new Array(NUM_BARS).fill(0),
+    highestBar:     -1,   // highest 0-indexed bar that completed >= 1×
+    pp:             0,
+    totalPrestiges: 0,
+    upgrades:       Object.fromEntries(UPGRADES.map(u => [u.id, 0])),
+  };
+}
+
+let state = blankState();
+
+// ═══════════════════════════════════
+//  DOM CACHE
+// ═══════════════════════════════════
+
+const domFill  = new Array(NUM_BARS);
+const domPct   = new Array(NUM_BARS);
+const domCount = new Array(NUM_BARS);
+const domRow   = new Array(NUM_BARS);
+const prevPct  = new Float64Array(NUM_BARS);
+const prevComp = new Array(NUM_BARS).fill(0);
+
+const barTurboMode = new Array(NUM_BARS).fill(false);
+const domTurboLbl  = new Array(NUM_BARS).fill(null);
+
+// ═══════════════════════════════════
+//  UPGRADE HELPERS
+// ═══════════════════════════════════
+
+const findU  = id => UPGRADES.find(u => u.id === id);
+const ul     = id => state.upgrades[id] || 0;
+const uv     = id => findU(id).val(ul(id));
+const ucost  = id => Math.ceil(findU(id).baseCost * Math.pow(findU(id).costMult, ul(id)));
+
+// ═══════════════════════════════════
+//  COMPLETION SPEED BONUS
+//  +5% per decade milestone (×10, ×100, ×1000 …)
+// ═══════════════════════════════════
+
+function barSpeedBonus(i) {
+  const c = state.completions[i];
+  let bonus = 1;
+  let unitBonus = 0.05;
+  let divisor = 10;
+
+  while (divisor <= c) {
+    bonus += Math.floor(c / divisor) * unitBonus;
+    divisor *= 10;
+    unitBonus *= 10;
+  }
+
+  return bonus;
+}
+
+// ═══════════════════════════════════
+//  TICK
+// ═══════════════════════════════════
+
+let notifsThisTick = 0;
+
+function tick() {
+  notifsThisTick = 0;
+  const numTicks = uv('multiTick');
+  const speed    = uv('speed');
+  const transfer = uv('transfer');
+  const bar0Rate = BASE_RATE * speed * barSpeedBonus(0); // %/inner-tick for bar 0
+
+  // Reset all turbo flags
+  for (let i = 0; i < NUM_BARS; i++) barTurboMode[i] = false;
+
+  // ── Phase 1: Turbo chain ──
+  // Starting from bar 0, cascade turbo outward as long as each bar's incoming
+  // rate (% per outer tick) meets the threshold.
+  let rateIn = bar0Rate * numTicks; // %/outer-tick arriving at bar 0
+
+  let turboFrontier = -1;
+  for (let i = 0; i < NUM_BARS && rateIn >= BAR0_TURBO_THRESHOLD; i++) {
+    barTurboMode[i] = true;
+    turboFrontier   = i;
+
+    const totalProgress = rateIn + state.bars[i];
+    const comps         = Math.floor(totalProgress / 100);
+    state.bars[i]       = totalProgress % 100;
+    if (comps > 0) {
+      state.completions[i] += comps;
+      if (i === 0 && state.highestBar < 0) state.highestBar = 0;
+      if (i > 0 && i > state.highestBar) {
+        state.highestBar = i;
+        if (notifsThisTick < 2) {
+          notifsThisTick++;
+          if (i === MIN_PRESTIGE) {
+            notify('🌟 Prestige now available!', '#ffa040');
+          } else if (i % 10 === 0) {
+            notify(`↑ Entering ${TIERS[Math.floor(i / 10)].name} tier!`,
+              TIERS[Math.floor(i / 10)].color);
+          }
+        }
+      }
+    }
+    rateIn = transfer * 100 * comps; // rate passed to next bar
+  }
+
+  // Carry leftover rate into the first non-turbo bar so inner ticks pick it up
+  if (turboFrontier >= 0 && turboFrontier < NUM_BARS - 1) {
+    state.bars[turboFrontier + 1] += rateIn;
+  }
+
+  // ── Phase 2: Inner ticks for non-turbo bars ──
+  for (let t = 0; t < numTicks; t++) {
+    if (!barTurboMode[0]) state.bars[0] += bar0Rate;
+    for (let i = 0; i < NUM_BARS; i++) {
+      if (barTurboMode[i]) continue; // handled in phase 1
+      if (state.bars[i] < 100) continue;
+      const count   = Math.floor(state.bars[i] / 100);
+      state.bars[i] %= 100;
+      state.completions[i] += count;
+      if (i > state.highestBar) {
+        state.highestBar = i;
+        if (notifsThisTick < 2) {
+          notifsThisTick++;
+          if (i === MIN_PRESTIGE) {
+            notify('🌟 Prestige now available!', '#ffa040');
+          } else if (i % 10 === 0 && i > 0) {
+            notify(`↑ Entering ${TIERS[Math.floor(i / 10)].name} tier!`,
+              TIERS[Math.floor(i / 10)].color);
+          }
+        }
+      }
+      // Bonus only applies to bar 0 — no barSpeedBonus on transfer
+      if (i < NUM_BARS - 1) state.bars[i + 1] += transfer * 100 * count;
+    }
+  }
+
+  renderBars();
+  renderStats();
+  renderPrestige();
+}
+
+// ═══════════════════════════════════
+//  PRESTIGE
+// ═══════════════════════════════════
+
+function calcPP() {
+  return Math.max(1, Math.floor(Math.pow(state.highestBar + 1, 2) / 10 * uv('ppBonus')));
+}
+
+function doPrestige() {
+  if (state.highestBar < MIN_PRESTIGE) return;
+
+  const earned   = calcPP();
+  const startPct = Math.min(99, uv('headStart'));
+
+  state.pp             += earned;
+  state.totalPrestiges += 1;
+  state.bars            = new Array(NUM_BARS).fill(0);
+  state.bars[0]         = startPct;
+  state.completions     = new Array(NUM_BARS).fill(0);
+  state.highestBar      = startPct > 0 ? 0 : -1;
+
+  prevPct.fill(-1);   // force full re-render
+  prevComp.fill(-1);
+
+  notify(`✦ Prestige! +${fmt(earned)} PP earned`, '#ffa040');
+  buildShop();
+  renderBars();
+  renderStats();
+  renderPrestige();
+  document.getElementById('bar-list').scrollTop = 0;
+}
+
+// ═══════════════════════════════════
+//  RENDER — BARS
+// ═══════════════════════════════════
+
+function renderBars() {
+  for (let i = 0; i < NUM_BARS; i++) {
+    // ── Turbo mode ──
+    if (barTurboMode[i]) {
+      const comp = state.completions[i];
+      // cps cascades: bar 0 drives the chain, each subsequent bar scales by transfer
+      const bar0Cps = BASE_RATE * uv('speed') * barSpeedBonus(0) * uv('multiTick') * (1000 / TICK_MS) / 100;
+      const cps     = bar0Cps * Math.pow(uv('transfer'), i);
+      domFill[i].classList.add('turbo');
+      if (domTurboLbl[i]) domTurboLbl[i].textContent = `\u26a1 ${fmt(Math.round(cps))}/s`;
+      domPct[i].textContent = 'MAX';
+      if (comp !== prevComp[i]) {
+        if (i === 0) {
+          const bonusPct = Math.round((barSpeedBonus(0) - 1) * 100);
+          domCount[0].innerHTML = comp > 0
+            ? '\xd7' + fmt(comp) + (bonusPct > 0 ? ` <span class="comp-bonus">+${fmt(bonusPct)}%</span>` : '')
+            : '';
+        } else {
+          domCount[i].textContent = comp > 0 ? '\xd7' + fmt(comp) : '';
+        }
+      }
+      prevPct[i]  = -99; // sentinel so leaving turbo forces a re-render
+      prevComp[i] = comp;
+      if (!domRow[i]._a) { domRow[i]._a = true; domRow[i].classList.add('active');  }
+      if (!domRow[i]._f) { domRow[i]._f = true; domRow[i].classList.add('filling'); }
+      continue;
+    }
+
+    // ── Leaving turbo ──
+    if (prevPct[i] === -99) {
+      domFill[i].classList.remove('turbo');
+      if (domTurboLbl[i]) domTurboLbl[i].textContent = '';
+      prevPct[i] = -1; // force normal re-render this frame
+    }
+
+    const pct  = Math.min(100, Math.max(0, state.bars[i]));
+    const comp = state.completions[i];
+    const pctR = Math.round(pct * 10) / 10;
+
+    if (pctR === prevPct[i] && comp === prevComp[i]) continue;
+    prevPct[i]  = pctR;
+    prevComp[i] = comp;
+
+    domFill[i].style.width = pct.toFixed(2) + '%';
+    domPct[i].textContent  = pct.toFixed(1) + '%';
+
+    if (comp > 0) {
+      if (i === 0) {
+        // Speed bonus label only on bar 0
+        const bonus    = barSpeedBonus(0);
+        const bonusPct = Math.round((bonus - 1) * 100);
+        domCount[0].innerHTML = '\xd7' + fmt(comp) +
+          (bonusPct > 0 ? ` <span class="comp-bonus">+${bonusPct}%</span>` : '');
+      } else {
+        domCount[i].textContent = '\xd7' + fmt(comp);
+      }
+    } else {
+      domCount[i].textContent = '';
+    }
+
+    const active  = pct > 0.01 || comp > 0;
+    const filling = pct > 0.01;
+
+    if (active  !== domRow[i]._a) { domRow[i]._a = active;  domRow[i].classList.toggle('active',  active);  }
+    if (filling !== domRow[i]._f) { domRow[i]._f = filling; domRow[i].classList.toggle('filling', filling); }
+  }
+}
+
+// ═══════════════════════════════════
+//  RENDER — STATS
+// ═══════════════════════════════════
+
+function renderStats() {
+  document.getElementById('spp').textContent      = fmt(state.pp);
+  document.getElementById('spres').textContent    = fmt(state.totalPrestiges);
+  document.getElementById('sfrontier').textContent =
+    state.highestBar >= 0 ? `#${state.highestBar + 1}` : '—';
+
+    const cps = BASE_RATE * uv('speed') * uv('multiTick') * barSpeedBonus(0) * (1000 / TICK_MS) / 100;
+    document.getElementById('srate').textContent = fmt(cps) + '/s';
+}
+
+// ═══════════════════════════════════
+//  RENDER — PRESTIGE
+// ═══════════════════════════════════
+
+function renderPrestige() {
+  const can  = state.highestBar >= MIN_PRESTIGE;
+  const btn  = document.getElementById('prestige-btn');
+  const hint = document.getElementById('prestige-hint');
+
+  btn.disabled = !can;
+  if (can) {
+    const pp = calcPP();
+    btn.textContent  = `✦ PRESTIGE (+${fmt(pp)} PP) ✦`;
+    hint.textContent = `Frontier: Bar ${state.highestBar + 1} — push higher for more PP`;
+  } else {
+    btn.textContent  = '✦ PRESTIGE ✦';
+    const need = MIN_PRESTIGE - state.highestBar;
+    hint.textContent = state.highestBar < 0
+      ? 'Complete Bar 5 to unlock prestige'
+      : `${need} more bar${need !== 1 ? 's' : ''} needed to prestige`;
+  }
+}
+
+// ═══════════════════════════════════
+//  SHOP
+// ═══════════════════════════════════
+
+function buildShop() {
+  const list = document.getElementById('shop-list');
+  list.innerHTML = '';
+
+  UPGRADES.forEach(u => {
+    const lv    = ul(u.id);
+    const maxed = lv >= u.maxLevel;
+    const cost  = ucost(u.id);
+    const can   = !maxed && state.pp >= cost;
+
+    const div = document.createElement('div');
+    div.className = 'shop-item' + (can ? ' can-afford' : '');
+    div.innerHTML = `
+      <div class="shop-info">
+        <div class="shop-name">${u.name}</div>
+        <div class="shop-desc">${u.desc}</div>
+        <div class="shop-eff">${lv > 0 ? u.effLabel(lv) : 'Not purchased'}
+          <span class="shop-lv">Lv ${lv}/${u.maxLevel}</span>
+        </div>
+      </div>
+      <button class="buy-btn${maxed ? ' maxed' : ''}"
+              ${can ? '' : 'disabled'} data-id="${u.id}">
+        ${maxed ? '✓ MAX' : fmt(cost) + ' PP'}
+      </button>`;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll('.buy-btn[data-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id   = btn.dataset.id;
+      const u    = findU(id);
+      const cost = ucost(id);
+      if (state.pp >= cost && ul(id) < u.maxLevel) {
+        state.pp           -= cost;
+        state.upgrades[id] += 1;
+        notify(`${u.name} → Lv ${ul(id)}`, '#b080ff');
+        buildShop();
+        renderStats();
+      }
+    });
+  });
+}
+
+// ═══════════════════════════════════
+//  BUILD BAR LIST DOM (once)
+// ═══════════════════════════════════
+
+function buildBarList() {
+  const list = document.getElementById('bar-list');
+  list.innerHTML = '';
+
+  for (let tier = 0; tier < 10; tier++) {
+    const t = TIERS[tier];
+    const section = document.createElement('div');
+    section.className = `tier-section tier-${tier}`;
+
+    const hdr = document.createElement('div');
+    hdr.className = 'tier-header';
+    hdr.innerHTML = `
+      <span class="tier-name" style="color:${t.color}">${t.name}</span>
+      <span class="tier-range">Bars ${tier * 10 + 1}–${tier * 10 + 10}</span>`;
+    section.appendChild(hdr);
+
+    for (let j = 0; j < 10; j++) {
+      const i   = tier * 10 + j;
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      row.id        = `br${i}`;
+      row._a        = false;
+      row._f        = false;
+
+      row.innerHTML = `
+        <span class="bar-num">${String(i + 1).padStart(2, '0')}</span>
+        <span class="bar-name-lbl" style="color:${t.color}cc">${BAR_NAMES[i]}</span>
+        <div class="bar-track">
+          <div class="bar-fill t${tier}" id="bf${i}"></div>
+          <span class="bar-turbo-lbl" id="bt${i}"></span>
+        </div>
+        <span class="bar-pct-lbl"  id="bp${i}">0.0%</span>
+        <span class="bar-cnt-lbl"  id="bc${i}"></span>`;
+
+      section.appendChild(row);
+    }
+    list.appendChild(section);
+  }
+
+  // Cache element references after DOM insertion
+  for (let i = 0; i < NUM_BARS; i++) {
+    domFill[i]     = document.getElementById(`bf${i}`);
+    domPct[i]      = document.getElementById(`bp${i}`);
+    domCount[i]    = document.getElementById(`bc${i}`);
+    domRow[i]      = document.getElementById(`br${i}`);
+    domTurboLbl[i] = document.getElementById(`bt${i}`);
+  }
+}
+
+// ═══════════════════════════════════
+//  SCROLL
+// ═══════════════════════════════════
+
+function scrollToFrontier() {
+  if (state.highestBar < 0) return;
+  const container = document.getElementById('bar-list');
+  const row = domRow[state.highestBar];
+  if (!container || !row) return;
+
+  const cRect = container.getBoundingClientRect();
+  const rRect = row.getBoundingClientRect();
+  const offset = rRect.top - cRect.top + container.scrollTop;
+  container.scrollTo({ top: Math.max(0, offset - container.clientHeight / 2 + row.clientHeight / 2), behavior: 'smooth' });
+}
+
+// Auto-scroll when frontier advances
+let autoFrontier = -1;
+setInterval(() => {
+  if (state.highestBar > autoFrontier && state.highestBar > 1) {
+    autoFrontier = state.highestBar;
+    scrollToFrontier();
+  }
+}, 2500);
+
+// ═══════════════════════════════════
+//  NOTIFICATIONS
+// ═══════════════════════════════════
+
+let lastMsg = ''; let lastMsgTime = 0;
+
+function notify(msg, color = '#a0a0ff') {
+  const now = Date.now();
+  if (msg === lastMsg && now - lastMsgTime < 1200) return;
+  lastMsg = msg; lastMsgTime = now;
+
+  const c   = document.getElementById('notif-container');
+  const div = document.createElement('div');
+  div.className = 'notif';
+  div.style.cssText = `border-left-color:${color};color:${color}`;
+  div.textContent = msg;
+  c.appendChild(div);
+  setTimeout(() => div.remove(), 2200);
+}
+
+// ═══════════════════════════════════
+//  FORMAT
+// ═══════════════════════════════════
+
+function fmt(n) {
+  n = Number(n);
+  if (n >= 1e18) return (n / 1e18).toFixed(2) + 'E';
+  if (n >= 1e15) return (n / 1e15).toFixed(2) + 'P';
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T';
+  if (n >= 1e9)  return (n / 1e9).toFixed(2)  + 'B';
+  if (n >= 1e6)  return (n / 1e6).toFixed(2)  + 'M';
+  if (n >= 1e3)  return (n / 1e3).toFixed(1)  + 'K';
+  if (n < 1 && n > 0) return n.toFixed(2);
+  return Math.floor(n).toString();
+}
+
+// ═══════════════════════════════════
+//  SAVE / LOAD
+// ═══════════════════════════════════
+
+function save() {
+  try {
+    localStorage.setItem('ca100_v3', JSON.stringify({
+      bars:           [...state.bars],
+      completions:    [...state.completions],
+      highestBar:     state.highestBar,
+      pp:             state.pp,
+      totalPrestiges: state.totalPrestiges,
+      upgrades:       { ...state.upgrades },
+    }));
+  } catch (e) {}
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem('ca100_v3');
+    if (!raw) return;
+    const d = JSON.parse(raw);
+
+    const padArr = (arr, len) => {
+      const a = (arr || []).slice(0, len).map(Number);
+      while (a.length < len) a.push(0);
+      return a;
+    };
+
+    state.bars           = padArr(d.bars, NUM_BARS);
+    state.completions    = padArr(d.completions, NUM_BARS);
+    state.highestBar     = d.highestBar ?? -1;
+    state.pp             = d.pp ?? 0;
+    state.totalPrestiges = d.totalPrestiges ?? 0;
+    UPGRADES.forEach(u => { state.upgrades[u.id] = d.upgrades?.[u.id] ?? 0; });
+  } catch (e) { console.warn('Load failed', e); }
+}
+
+function resetGame() {
+  if (!confirm('Hard reset? All progress permanently lost!')) return;
+  localStorage.removeItem('ca100_v3');
+  state = blankState();
+  prevPct.fill(-1);
+  prevComp.fill(-1);
+  autoFrontier = -1;
+  buildShop();
+  renderBars();
+  renderStats();
+  renderPrestige();
+  document.getElementById('bar-list').scrollTop = 0;
+  notify('Game reset.', '#ff5555');
+}
+
+// ═══════════════════════════════════
+//  INIT
+// ═══════════════════════════════════
+
+load();
+buildBarList();
+buildShop();
+renderBars();
+renderStats();
+renderPrestige();
+setInterval(tick, TICK_MS);
+setInterval(save, 5000);
+</script>
+</body>
+</html>
