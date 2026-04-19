@@ -668,7 +668,7 @@ function tick() {
 // ═══════════════════════════════════
 
 function calcPP() {
-return (Math.max(1, Math.floor(Math.pow(state.highestBar + 1, 2.5)) / 8) * uv('ppBonus')));
+return (Math.max(1, Math.floor(Math.pow(state.highestBar + 1, 2.5)/ 8))) * uv('ppBonus');
 }
 
 function doPrestige() {
