@@ -490,8 +490,8 @@ const UPGRADES = [
     name: '🔗 Chain Efficiency',
     desc: 'Increases transfer rate between bars',
     baseCost: 2, costMult: 2.1, maxLevel: 25,
-    effLabel: l => `${Math.round((BASE_TRANSFER + l * 0.01) * 100)}% per fill`,
-    val:      l => BASE_TRANSFER + l * 0.01,
+    effLabel: l => `${Math.round((BASE_TRANSFER + l * 0.025) * 100)}% per fill`,
+    val:      l => BASE_TRANSFER + l * 0.025,
   },
   {
     id: 'multiTick',
