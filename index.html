@@ -670,7 +670,7 @@ function tick() {
 function calcPP() {
 const level = state.highestBar + 1;
 const bonus = uv('ppBonus');
-if ((Math.floor(Math.pow(level,2.5) / 8) * bonus) < 1) return Math.floor(bonus / 8);
+if ((Math.floor(Math.pow(level,2.5) / 8) * bonus) < 1) return Math.floor(bonus);
 return ((Math.floor(Math.pow(level,2.5)) / 8) * bonus);
 }
 
