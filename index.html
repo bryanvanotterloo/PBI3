@@ -75,7 +75,7 @@ body {
 /* ── STATS ── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
@@ -259,6 +259,16 @@ body {
 .bar-row.active .bar-cnt-lbl { color: #404075; }
 .bar-cnt-lbl .comp-bonus { color: #cc8820; }
 
+.bar-trans-lbl {
+  width: 58px;
+  text-align: right;
+  font-size: 0.61em;
+  color: #2a5a2a;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.bar-row.active .bar-trans-lbl { color: #40aa60; }
+
 /* ── FRONTIER BUTTON ── */
 .frontier-btn {
   font-size: 0.9em;
@@ -370,6 +380,52 @@ body {
 }
 .reset-row button:hover { color: #383870; }
 
+/* ── ASCENSION ── */
+.ascension-btn {
+  width: 100%;
+  padding: 13px;
+  font-size: 0.95em;
+  font-weight: 800;
+  letter-spacing: 2px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  background: linear-gradient(120deg, #550088, #aa00ff, #ffcc00);
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  box-shadow: 0 0 18px #aa00ff28;
+  transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+}
+.ascension-btn:not(:disabled):hover {
+  opacity: 0.9; transform: translateY(-1px);
+  box-shadow: 0 0 28px #aa00ff55;
+}
+.ascension-btn:not(:disabled):active { transform: none; }
+.ascension-btn:disabled {
+  background: #12122a; color: #242448;
+  cursor: not-allowed; box-shadow: none;
+}
+.ascension-hint {
+  font-size: 0.74em;
+  color: #303060;
+  text-align: center;
+  margin-top: 9px;
+  min-height: 1em;
+}
+.asc-shop-divider {
+  font-size: 0.62em;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #8a6600;
+  text-align: center;
+  padding: 10px 0 6px;
+  border-top: 1px solid #1a1400;
+  margin-top: 8px;
+}
+.asc-shop-item .shop-name { color: #ffcc00; }
+.asc-shop-item.can-afford { border-color: #2a1e00; }
+
 /* ── NOTIFICATIONS ── */
 #notif-container {
   position: fixed; top: 16px; right: 16px;
@@ -401,6 +457,8 @@ body {
         <div class="stat-box"><div class="stat-val" id="spp">0</div><div class="stat-lbl">PP</div></div>
         <div class="stat-box"><div class="stat-val" id="spres">0</div><div class="stat-lbl">Prestiges</div></div>
         <div class="stat-box"><div class="stat-val" id="sfrontier">—</div><div class="stat-lbl">Frontier</div></div>
+        <div class="stat-box" id="stat-ap-box"><div class="stat-val" id="sap" style="color:#ffcc00">0</div><div class="stat-lbl">AP</div></div>
+        <div class="stat-box" id="stat-asc-box"><div class="stat-val" id="sasc" style="color:#cc88ff">0</div><div class="stat-lbl">Ascensions</div></div>
         <div class="stat-box"><div class="stat-val" id="srate">—</div><div class="stat-lbl">Rate /s</div></div>
       </div>
     </div>
@@ -421,10 +479,17 @@ body {
       <div class="prestige-hint" id="prestige-hint">Complete Bar 5 to unlock prestige</div>
     </div>
 
+    <!-- Ascension -->
+    <div class="panel" id="ascension-panel">
+      <div class="panel-title">Ascension</div>
+      <button class="ascension-btn" id="ascension-btn" onclick="doAscension()" disabled>◆ ASCEND ◆</button>
+      <div class="ascension-hint" id="ascension-hint">Complete Bar 100 to unlock ascension</div>
+    </div>
+
   </div>
 
   <!-- Shop -->
-  <div>
+  <div id="shop-col">
     <div class="panel" style="position:sticky;top:14px;">
       <div class="panel-title">Prestige Shop</div>
       <div id="shop-list"></div>
@@ -445,9 +510,9 @@ body {
 const NUM_BARS       = 100;
 const TICK_MS        = 50;    // 20 ticks/sec
 const BASE_RATE      = 1.0;   // %/tick for bar 0
-const BASE_TRANSFER  = 0.01;  // fraction passed to next bar per completion
+const BASE_TRANSFER  = 0.02;  // fraction passed to next bar per completion
 const MIN_PRESTIGE   = 1;     // 0-indexed: bar index 4 = Bar 5 must complete first
-const BAR0_TURBO_THRESHOLD = 25; // %/outer-tick: bar 0 stops moving and streams completions/s
+const TURBO_CPS_THRESHOLD = 5; // completions/s: each bar independently enters turbo at this rate
 
 // ═══════════════════════════════════
 //  THEME DATA
@@ -497,7 +562,7 @@ const UPGRADES = [
     id: 'multiTick',
     name: '⚙️ Cascade Engine',
     desc: 'Processes multiple ticks per frame',
-    baseCost: 10, costMult: 3.8, maxLevel: 8,
+    baseCost: 10, costMult: 3.0, maxLevel: 8,
     effLabel: l => `${1 + l}× tick rate`,
     val:      l => 1 + l,
   },
@@ -514,8 +579,55 @@ const UPGRADES = [
     name: '🔄 Residual Echo',
     desc: 'Start with bonus Energy after prestige',
     baseCost: 5, costMult: 2.2, maxLevel: 20,
-    effLabel: l => `Start at ${l * 5}% Energy`,
-    val:      l => l * 5,
+    effLabel: l => `Start at ${l * 8}% Energy`,
+    val:      l => l * 8,
+  },
+];
+
+// ═══════════════════════════════════
+//  ASCENSION UPGRADES
+// ═══════════════════════════════════
+
+const ASCENSION_UPGRADES = [
+  {
+    id: 'aSpeed',
+    name: '🔥 Eternal Surge',
+    desc: 'Multiplies fill speed on top of Energy Surge',
+    baseCost: 1, costMult: 2.0, maxLevel: 20,
+    effLabel: l => `${(1 + l * 0.5).toFixed(1)}× speed bonus`,
+    val:      l => 1 + l * 0.5,
+  },
+  {
+    id: 'aTransfer',
+    name: '⛓️ Eternal Chain',
+    desc: 'Multiplies transfer rate on top of Chain Efficiency',
+    baseCost: 2, costMult: 2.5, maxLevel: 15,
+    effLabel: l => `${(1 + l * 0.5).toFixed(1)}× transfer bonus`,
+    val:      l => 1 + l * 0.5,
+  },
+  {
+    id: 'aMultiTick',
+    name: '♾️ Eternal Engine',
+    desc: 'Adds bonus inner ticks on top of Cascade Engine',
+    baseCost: 10, costMult: 3.5, maxLevel: 5,
+    effLabel: l => l > 0 ? `+${l} bonus ticks` : 'No bonus yet',
+    val:      l => l,
+  },
+  {
+    id: 'aPpBonus',
+    name: '💫 Eternal Aura',
+    desc: 'Multiplies PP earned on top of Prestige Aura',
+    baseCost: 3, costMult: 2.2, maxLevel: 20,
+    effLabel: l => `${(1 + l * 1.0).toFixed(1)}× PP bonus`,
+    val:      l => 1 + l * 1.0,
+  },
+  {
+    id: 'aHeadStart',
+    name: '⚡ Eternal Echo',
+    desc: 'Adds bonus start % on top of Residual Echo',
+    baseCost: 5, costMult: 2.5, maxLevel: 15,
+    effLabel: l => `+${l * 15}% start bonus`,
+    val:      l => l * 15,
   },
 ];
 
@@ -525,12 +637,16 @@ const UPGRADES = [
 
 function blankState() {
   return {
-    bars:           new Array(NUM_BARS).fill(0),
-    completions:    new Array(NUM_BARS).fill(0),
-    highestBar:     -1,   // highest 0-indexed bar that completed >= 1×
-    pp:             0,
-    totalPrestiges: 0,
-    upgrades:       Object.fromEntries(UPGRADES.map(u => [u.id, 0])),
+    bars:            new Array(NUM_BARS).fill(0),
+    completions:     new Array(NUM_BARS).fill(0),
+    highestBar:      -1,   // highest 0-indexed bar that completed >= 1×
+    pp:              0,
+    totalPrestiges:  0,
+    upgrades:        Object.fromEntries(UPGRADES.map(u => [u.id, 0])),
+    ap:              0,
+    totalAscensions: 0,
+    ascUpgrades:     Object.fromEntries(ASCENSION_UPGRADES.map(u => [u.id, 0])),
+    totalPpEarned:   0,
   };
 }
 
@@ -549,6 +665,7 @@ const prevComp = new Array(NUM_BARS).fill(0);
 
 const barTurboMode = new Array(NUM_BARS).fill(false);
 const domTurboLbl  = new Array(NUM_BARS).fill(null);
+const domTransIn   = new Array(NUM_BARS);
 
 // ═══════════════════════════════════
 //  UPGRADE HELPERS
@@ -558,6 +675,11 @@ const findU  = id => UPGRADES.find(u => u.id === id);
 const ul     = id => state.upgrades[id] || 0;
 const uv     = id => findU(id).val(ul(id));
 const ucost  = id => Math.ceil(findU(id).baseCost * Math.pow(findU(id).costMult, ul(id)));
+
+const findAU = id => ASCENSION_UPGRADES.find(u => u.id === id);
+const aul    = id => state.ascUpgrades[id] || 0;
+const auv    = id => findAU(id).val(aul(id));
+const aucost = id => Math.ceil(findAU(id).baseCost * Math.pow(findAU(id).costMult, aul(id)));
 
 // ═══════════════════════════════════
 //  COMPLETION SPEED BONUS
@@ -587,21 +709,22 @@ let notifsThisTick = 0;
 
 function tick() {
   notifsThisTick = 0;
-  const numTicks = uv('multiTick');
-  const speed    = uv('speed');
-  const transfer = uv('transfer');
+  const numTicks = uv('multiTick') + aul('aMultiTick');
+  const speed    = uv('speed') * auv('aSpeed');
+  const transfer = uv('transfer') * auv('aTransfer');
   const bar0Rate = BASE_RATE * speed * barSpeedBonus(0); // %/inner-tick for bar 0
 
   // Reset all turbo flags
   for (let i = 0; i < NUM_BARS; i++) barTurboMode[i] = false;
 
   // ── Phase 1: Turbo chain ──
-  // Starting from bar 0, cascade turbo outward as long as each bar's incoming
-  // rate (% per outer tick) meets the threshold.
+  // Each bar enters turbo independently when its smooth theoretical CPS >= threshold.
+  // Smooth CPS avoids flicker caused by the discrete (integer) completions-per-tick cascade.
+  const bar0Cps = BASE_RATE * speed * barSpeedBonus(0) * numTicks * (1000 / TICK_MS) / 100;
   let rateIn = bar0Rate * numTicks; // %/outer-tick arriving at bar 0
 
   let turboFrontier = -1;
-  for (let i = 0; i < NUM_BARS && rateIn >= BAR0_TURBO_THRESHOLD; i++) {
+  for (let i = 0; i < NUM_BARS && bar0Cps * Math.pow(transfer, i) >= TURBO_CPS_THRESHOLD; i++) {
     barTurboMode[i] = true;
     turboFrontier   = i;
 
@@ -624,7 +747,7 @@ function tick() {
         }
       }
     }
-    rateIn = transfer * 100 * comps; // rate passed to next bar
+    rateIn = transfer * 100 * comps * Math.sqrt(barSpeedBonus(i)); // rate passed to next bar
   }
 
   // Carry leftover rate into the first non-turbo bar so inner ticks pick it up
@@ -654,33 +777,62 @@ function tick() {
         }
       }
       // Bonus only applies to bar 0 — no barSpeedBonus on transfer
-      if (i < NUM_BARS - 1) state.bars[i + 1] += transfer * 100 * count;
+      if (i < NUM_BARS - 1) state.bars[i + 1] += transfer * 100 * count * Math.sqrt(barSpeedBonus(i));
     }
   }
 
   renderBars();
   renderStats();
   renderPrestige();
+  renderAscension();
 }
 
 // ═══════════════════════════════════
 //  PRESTIGE
 // ═══════════════════════════════════
 
+function calcAP() {
+  return Math.max(1, Math.floor(Math.sqrt(state.totalPpEarned / 50000)));
+}
+
+function doAscension() {
+  if (state.highestBar < NUM_BARS - 1) return;
+  const earned = calcAP();
+  state.ap              += earned;
+  state.totalAscensions += 1;
+  state.bars             = new Array(NUM_BARS).fill(0);
+  state.completions      = new Array(NUM_BARS).fill(0);
+  state.highestBar       = -1;
+  state.pp               = 0;
+  state.totalPrestiges   = 0;
+  state.totalPpEarned    = 0;
+  state.upgrades         = Object.fromEntries(UPGRADES.map(u => [u.id, 0]));
+  prevPct.fill(-1);
+  prevComp.fill(-1);
+  notify(`◆ Ascension! +${fmt(earned)} AP earned`, '#ffcc00');
+  buildShop();
+  renderBars();
+  renderStats();
+  renderPrestige();
+  renderAscension();
+  document.getElementById('bar-list').scrollTop = 0;
+}
+
 function calcPP() {
-const level = state.highestBar + 1;
-const bonus = uv('ppBonus');
-if ((Math.floor(Math.pow(level,2.5) / 8) * bonus) < 1) return Math.floor(bonus);
-return ((Math.floor(Math.pow(level,2.5)) / 8) * bonus);
+  const level = state.highestBar + 1;
+  const bonus = uv('ppBonus') * auv('aPpBonus');
+  if ((Math.floor(Math.pow(level,2.5) / 8) * bonus) < 1) return Math.floor(bonus);
+  return ((Math.floor(Math.pow(level,2.5)) / 8) * bonus);
 }
 
 function doPrestige() {
   if (state.highestBar < MIN_PRESTIGE) return;
 
   const earned   = calcPP();
-  const startPct = Math.min(99, uv('headStart'));
+  const startPct = Math.min(99, uv('headStart') + auv('aHeadStart'));
 
   state.pp             += earned;
+  state.totalPpEarned  += earned;
   state.totalPrestiges += 1;
   state.bars            = new Array(NUM_BARS).fill(0);
   state.bars[0]         = startPct;
@@ -695,6 +847,7 @@ function doPrestige() {
   renderBars();
   renderStats();
   renderPrestige();
+  renderAscension();
   document.getElementById('bar-list').scrollTop = 0;
 }
 
@@ -703,7 +856,12 @@ function doPrestige() {
 // ═══════════════════════════════════
 
 function renderBars() {
+  const transferRate = uv('transfer') * auv('aTransfer');
   for (let i = 0; i < NUM_BARS; i++) {
+    if (i > 0 && domTransIn[i]) {
+      const transAmt = transferRate * 100 * Math.sqrt(barSpeedBonus(i - 1));
+      domTransIn[i].textContent = '+' + transAmt.toFixed(2) + '%';
+    }
     // ── Turbo mode ──
     if (barTurboMode[i]) {
       const comp = state.completions[i];
@@ -713,14 +871,18 @@ function renderBars() {
       domFill[i].classList.add('turbo');
       if (domTurboLbl[i]) domTurboLbl[i].textContent = `\u26a1 ${fmt(Math.round(cps))}/s`;
       domPct[i].textContent = 'MAX';
-      if (comp !== prevComp[i]) {
-        if (i === 0) {
-          const bonusPct = Math.round((barSpeedBonus(0) - 1) * 100);
-          domCount[0].innerHTML = comp > 0
+      if (i === 0) {
+        // Speed bonus label only on bar 0
+        const bonus    = barSpeedBonus(0);
+        const bonusPct = Math.round((bonus - 1) * 100);
+        domCount[0].innerHTML = '\xd7' + fmt(comp) +
+          (bonusPct > 0 ? ` <span class="comp-bonus">+${fmt(bonusPct)}%</span>` : '');
+      } else {
+        if (comp !== prevComp[i]) {
+          const bonusPct = Math.round((Math.sqrt(barSpeedBonus(i)) - 1) * 100);
+          domCount[i].innerHTML = comp > 0
             ? '\xd7' + fmt(comp) + (bonusPct > 0 ? ` <span class="comp-bonus">+${fmt(bonusPct)}%</span>` : '')
             : '';
-        } else {
-          domCount[i].textContent = comp > 0 ? '\xd7' + fmt(comp) : '';
         }
       }
       prevPct[i]  = -99; // sentinel so leaving turbo forces a re-render
@@ -747,20 +909,20 @@ function renderBars() {
 
     domFill[i].style.width = pct.toFixed(2) + '%';
     domPct[i].textContent  = pct.toFixed(1) + '%';
-
-    if (comp > 0) {
-      if (i === 0) {
+    if (i === 0) {
         // Speed bonus label only on bar 0
         const bonus    = barSpeedBonus(0);
         const bonusPct = Math.round((bonus - 1) * 100);
         domCount[0].innerHTML = '\xd7' + fmt(comp) +
-          (bonusPct > 0 ? ` <span class="comp-bonus">+${bonusPct}%</span>` : '');
-      } else {
-        domCount[i].textContent = '\xd7' + fmt(comp);
-      }
-    } else {
+          (bonusPct > 0 ? ` <span class="comp-bonus">+${fmt(bonusPct)}%</span>` : '');
+      } else if (comp > 0) {
+          domCount[i].innerHTML = '\xd7' + fmt(comp);
+        
+        } else {
       domCount[i].textContent = '';
     }
+      
+    
 
     const active  = pct > 0.01 || comp > 0;
     const filling = pct > 0.01;
@@ -775,13 +937,14 @@ function renderBars() {
 // ═══════════════════════════════════
 
 function renderStats() {
-  document.getElementById('spp').textContent      = fmt(state.pp);
-  document.getElementById('spres').textContent    = fmt(state.totalPrestiges);
-  document.getElementById('sfrontier').textContent =
-    state.highestBar >= 0 ? `#${state.highestBar + 1}` : '—';
+  document.getElementById('spp').textContent       = fmt(state.pp);
+  document.getElementById('spres').textContent     = fmt(state.totalPrestiges);
+  document.getElementById('sfrontier').textContent = state.highestBar >= 0 ? `#${state.highestBar + 1}` : '—';
+  document.getElementById('sap').textContent       = fmt(state.ap);
+  document.getElementById('sasc').textContent      = fmt(state.totalAscensions);
 
-    const cps = BASE_RATE * uv('speed') * uv('multiTick') * barSpeedBonus(0) * (1000 / TICK_MS) / 100;
-    document.getElementById('srate').textContent = fmt(cps) + '/s';
+  const cps = BASE_RATE * uv('speed') * auv('aSpeed') * (uv('multiTick') + aul('aMultiTick')) * barSpeedBonus(0) * (1000 / TICK_MS) / 100;
+  document.getElementById('srate').textContent = fmt(cps) + '/s';
 }
 
 // ═══════════════════════════════════
@@ -808,6 +971,37 @@ function renderPrestige() {
 }
 
 // ═══════════════════════════════════
+//  RENDER — ASCENSION
+// ═══════════════════════════════════
+
+function renderAscension() {
+  const can      = state.highestBar >= NUM_BARS - 1;
+  const unlocked = can || state.totalAscensions > 0;
+  const btn      = document.getElementById('ascension-btn');
+  const hint     = document.getElementById('ascension-hint');
+
+  // Show/hide ascension panel, shop, and AP/Ascensions stats
+  const display = unlocked ? '' : 'none';
+  document.getElementById('ascension-panel').style.display  = display;
+  document.getElementById('asc-shop-section').style.display = display;
+  document.getElementById('stat-ap-box').style.display      = display;
+  document.getElementById('stat-asc-box').style.display     = display;
+
+  btn.disabled = !can;
+  if (can) {
+    const ap = calcAP();
+    btn.textContent  = `◆ ASCEND (+${fmt(ap)} AP) ◆`;
+    hint.textContent = `PP earned: ${fmt(state.totalPpEarned)} — more PP earned = more AP`;
+  } else {
+    btn.textContent = '◆ ASCEND ◆';
+    const need = (NUM_BARS - 1) - state.highestBar;
+    hint.textContent = state.highestBar < 0
+      ? 'Complete Bar 100 to unlock ascension'
+      : `${need} more bar${need !== 1 ? 's' : ''} needed to ascend`;
+  }
+}
+
+// ═══════════════════════════════════
 //  SHOP
 // ═══════════════════════════════════
 
@@ -815,6 +1009,7 @@ function buildShop() {
   const list = document.getElementById('shop-list');
   list.innerHTML = '';
 
+  // ── Prestige upgrades ──
   UPGRADES.forEach(u => {
     const lv    = ul(u.id);
     const maxed = lv >= u.maxLevel;
@@ -832,23 +1027,70 @@ function buildShop() {
         </div>
       </div>
       <button class="buy-btn${maxed ? ' maxed' : ''}"
-              ${can ? '' : 'disabled'} data-id="${u.id}">
+              ${can ? '' : 'disabled'} data-id="${u.id}" data-shop="pp">
         ${maxed ? '✓ MAX' : fmt(cost) + ' PP'}
       </button>`;
     list.appendChild(div);
   });
 
+  // ── Ascension upgrades ──
+  const ascSection = document.createElement('div');
+  ascSection.id = 'asc-shop-section';
+  list.appendChild(ascSection);
+
+  const divider = document.createElement('div');
+  divider.className = 'asc-shop-divider';
+  divider.textContent = '— Ascension Shop —';
+  ascSection.appendChild(divider);
+
+  ASCENSION_UPGRADES.forEach(u => {
+    const lv    = aul(u.id);
+    const maxed = lv >= u.maxLevel;
+    const cost  = aucost(u.id);
+    const can   = !maxed && state.ap >= cost;
+
+    const div = document.createElement('div');
+    div.className = 'shop-item asc-shop-item' + (can ? ' can-afford' : '');
+    div.innerHTML = `
+      <div class="shop-info">
+        <div class="shop-name">${u.name}</div>
+        <div class="shop-desc">${u.desc}</div>
+        <div class="shop-eff">${lv > 0 ? u.effLabel(lv) : 'Not purchased'}
+          <span class="shop-lv">Lv ${lv}/${u.maxLevel}</span>
+        </div>
+      </div>
+      <button class="buy-btn${maxed ? ' maxed' : ''}"
+              ${can ? '' : 'disabled'} data-id="${u.id}" data-shop="ap">
+        ${maxed ? '✓ MAX' : fmt(cost) + ' AP'}
+      </button>`;
+    ascSection.appendChild(div);
+  });
+
+  // ── Buy handlers ──
   list.querySelectorAll('.buy-btn[data-id]').forEach(btn => {
     btn.addEventListener('click', () => {
       const id   = btn.dataset.id;
-      const u    = findU(id);
-      const cost = ucost(id);
-      if (state.pp >= cost && ul(id) < u.maxLevel) {
-        state.pp           -= cost;
-        state.upgrades[id] += 1;
-        notify(`${u.name} → Lv ${ul(id)}`, '#b080ff');
-        buildShop();
-        renderStats();
+      const shop = btn.dataset.shop;
+      if (shop === 'pp') {
+        const u    = findU(id);
+        const cost = ucost(id);
+        if (state.pp >= cost && ul(id) < u.maxLevel) {
+          state.pp           -= cost;
+          state.upgrades[id] += 1;
+          notify(`${u.name} → Lv ${ul(id)}`, '#b080ff');
+          buildShop();
+          renderStats();
+        }
+      } else {
+        const u    = findAU(id);
+        const cost = aucost(id);
+        if (state.ap >= cost && aul(id) < u.maxLevel) {
+          state.ap              -= cost;
+          state.ascUpgrades[id] += 1;
+          notify(`${u.name} → Lv ${aul(id)}`, '#ffcc00');
+          buildShop();
+          renderStats();
+        }
       }
     });
   });
@@ -890,7 +1132,8 @@ function buildBarList() {
           <span class="bar-turbo-lbl" id="bt${i}"></span>
         </div>
         <span class="bar-pct-lbl"  id="bp${i}">0.0%</span>
-        <span class="bar-cnt-lbl"  id="bc${i}"></span>`;
+        <span class="bar-cnt-lbl"  id="bc${i}"></span>
+        <span class="bar-trans-lbl" id="bti${i}"></span>`;
 
       section.appendChild(row);
     }
@@ -904,6 +1147,7 @@ function buildBarList() {
     domCount[i]    = document.getElementById(`bc${i}`);
     domRow[i]      = document.getElementById(`br${i}`);
     domTurboLbl[i] = document.getElementById(`bt${i}`);
+    domTransIn[i]  = document.getElementById(`bti${i}`);
   }
 }
 
@@ -974,20 +1218,25 @@ function fmt(n) {
 
 function save() {
   try {
-    localStorage.setItem('ca100_v3', JSON.stringify({
-      bars:           [...state.bars],
-      completions:    [...state.completions],
-      highestBar:     state.highestBar,
-      pp:             state.pp,
-      totalPrestiges: state.totalPrestiges,
-      upgrades:       { ...state.upgrades },
+    localStorage.setItem('ca100_v4', JSON.stringify({
+      bars:            [...state.bars],
+      completions:     [...state.completions],
+      highestBar:      state.highestBar,
+      pp:              state.pp,
+      totalPrestiges:  state.totalPrestiges,
+      totalPpEarned:   state.totalPpEarned,
+      upgrades:        { ...state.upgrades },
+      ap:              state.ap,
+      totalAscensions: state.totalAscensions,
+      ascUpgrades:     { ...state.ascUpgrades },
     }));
   } catch (e) {}
 }
 
 function load() {
   try {
-    const raw = localStorage.getItem('ca100_v3');
+    // Migrate from v3 save if v4 doesn't exist yet
+    const raw = localStorage.getItem('ca100_v4') || localStorage.getItem('ca100_v3');
     if (!raw) return;
     const d = JSON.parse(raw);
 
@@ -997,18 +1246,23 @@ function load() {
       return a;
     };
 
-    state.bars           = padArr(d.bars, NUM_BARS);
-    state.completions    = padArr(d.completions, NUM_BARS);
-    state.highestBar     = d.highestBar ?? -1;
-    state.pp             = d.pp ?? 0;
-    state.totalPrestiges = d.totalPrestiges ?? 0;
+    state.bars            = padArr(d.bars, NUM_BARS);
+    state.completions     = padArr(d.completions, NUM_BARS);
+    state.highestBar      = d.highestBar ?? -1;
+    state.pp              = d.pp ?? 0;
+    state.totalPrestiges  = d.totalPrestiges ?? 0;
+    state.totalPpEarned   = d.totalPpEarned ?? 0;
+    state.ap              = d.ap ?? 0;
+    state.totalAscensions = d.totalAscensions ?? 0;
     UPGRADES.forEach(u => { state.upgrades[u.id] = d.upgrades?.[u.id] ?? 0; });
+    ASCENSION_UPGRADES.forEach(u => { state.ascUpgrades[u.id] = d.ascUpgrades?.[u.id] ?? 0; });
   } catch (e) { console.warn('Load failed', e); }
 }
 
 function resetGame() {
   if (!confirm('Hard reset? All progress permanently lost!')) return;
   localStorage.removeItem('ca100_v3');
+  localStorage.removeItem('ca100_v4');
   state = blankState();
   prevPct.fill(-1);
   prevComp.fill(-1);
@@ -1017,6 +1271,7 @@ function resetGame() {
   renderBars();
   renderStats();
   renderPrestige();
+  renderAscension();
   document.getElementById('bar-list').scrollTop = 0;
   notify('Game reset.', '#ff5555');
 }
@@ -1031,6 +1286,7 @@ buildShop();
 renderBars();
 renderStats();
 renderPrestige();
+renderAscension();
 setInterval(tick, TICK_MS);
 setInterval(save, 5000);
 </script>
