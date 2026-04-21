@@ -555,8 +555,8 @@ const UPGRADES = [
     name: '🔗 Chain Efficiency',
     desc: 'Increases transfer rate between bars',
     baseCost: 2, costMult: 2.1, maxLevel: 25,
-    effLabel: l => `${Math.round((BASE_TRANSFER + l * 0.025) * 100)}% per fill`,
-    val:      l => BASE_TRANSFER + l * 0.025,
+    effLabel: l => `${Math.round((BASE_TRANSFER + l * 0.01) * 100)}% per fill`,
+    val:      l => BASE_TRANSFER + l * 0.01,
   },
   {
     id: 'multiTick',
@@ -576,11 +576,11 @@ const UPGRADES = [
   },
   {
     id: 'headStart',
-    name: '🔄 Residual Echo',
-    desc: 'Start with bonus Energy after prestige',
-    baseCost: 5, costMult: 2.2, maxLevel: 20,
-    effLabel: l => `Start at ${l * 8}% Energy`,
-    val:      l => l * 8,
+    name: '🧠 Resonant Memory',
+    desc: 'Each prestige permanently stacks a fill speed bonus',
+    baseCost: 5, costMult: 2.2, maxLevel: 10,
+    effLabel: l => l > 0 ? `+${(l * 0.5).toFixed(1)}% speed per prestige` : 'No bonus yet',
+    val:      l => l * 0.5,
   },
 ];
 
@@ -623,11 +623,11 @@ const ASCENSION_UPGRADES = [
   },
   {
     id: 'aHeadStart',
-    name: '⚡ Eternal Echo',
-    desc: 'Adds bonus start % on top of Residual Echo',
+    name: '🌌 Eternal Memory',
+    desc: 'Each ascension permanently stacks a fill speed bonus',
     baseCost: 5, costMult: 2.5, maxLevel: 15,
-    effLabel: l => `+${l * 15}% start bonus`,
-    val:      l => l * 15,
+    effLabel: l => l > 0 ? `+${l * 5}% speed per ascension` : 'No bonus yet',
+    val:      l => l * 5,
   },
 ];
 
@@ -706,11 +706,14 @@ function barSpeedBonus(i) {
 // ═══════════════════════════════════
 
 let notifsThisTick = 0;
+let offlineMode    = false;
 
-function tick() {
+function computeTick() {
   notifsThisTick = 0;
-  const numTicks = uv('multiTick') + aul('aMultiTick');
-  const speed    = uv('speed') * auv('aSpeed');
+  const numTicks  = uv('multiTick') + aul('aMultiTick');
+  const memBonus  = 1 + (uv('headStart') / 100) * state.totalPrestiges
+                      + (auv('aHeadStart') / 100) * state.totalAscensions;
+  const speed     = uv('speed') * auv('aSpeed') * memBonus;
   const transfer = uv('transfer') * auv('aTransfer');
   const bar0Rate = BASE_RATE * speed * barSpeedBonus(0); // %/inner-tick for bar 0
 
@@ -736,7 +739,7 @@ function tick() {
       if (i === 0 && state.highestBar < 0) state.highestBar = 0;
       if (i > 0 && i > state.highestBar) {
         state.highestBar = i;
-        if (notifsThisTick < 2) {
+        if (!offlineMode && notifsThisTick < 2) {
           notifsThisTick++;
           if (i === MIN_PRESTIGE) {
             notify('🌟 Prestige now available!', '#ffa040');
@@ -766,7 +769,7 @@ function tick() {
       state.completions[i] += count;
       if (i > state.highestBar) {
         state.highestBar = i;
-        if (notifsThisTick < 2) {
+        if (!offlineMode && notifsThisTick < 2) {
           notifsThisTick++;
           if (i === MIN_PRESTIGE) {
             notify('🌟 Prestige now available!', '#ffa040');
@@ -780,12 +783,64 @@ function tick() {
       if (i < NUM_BARS - 1) state.bars[i + 1] += transfer * 100 * count * Math.sqrt(barSpeedBonus(i));
     }
   }
+}
 
+function tick() {
+  computeTick();
   renderBars();
   renderStats();
   renderPrestige();
   renderAscension();
 }
+
+// ═══════════════════════════════════
+//  OFFLINE PROGRESS
+// ═══════════════════════════════════
+
+const MAX_OFFLINE_MS = 1 * 60 * 60 * 1000; // 1-hour cap
+let offlineFrom = null;
+let gameInterval = null;
+
+function applyOfflineProgress(elapsedMs) {
+  if (elapsedMs < 5000) return;
+  const cappedMs    = Math.min(elapsedMs, MAX_OFFLINE_MS);
+  const missedTicks = Math.floor(cappedMs / TICK_MS);
+  if (missedTicks < 1) return;
+
+  offlineMode = true;
+  for (let t = 0; t < missedTicks; t++) computeTick();
+  offlineMode = false;
+
+  renderBars();
+  renderStats();
+  renderPrestige();
+  renderAscension();
+
+  const secs    = Math.round(cappedMs / 1000);
+  const timeStr = secs >= 3600
+    ? `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`
+    : secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
+  notify(`⏱ Offline ${timeStr} — progress applied!`, '#60aaff');
+}
+
+function goOffline() {
+  if (offlineFrom !== null) return;
+  offlineFrom = Date.now();
+  if (gameInterval) { clearInterval(gameInterval); gameInterval = null; }
+  save();
+}
+
+function goOnline() {
+  if (offlineFrom === null) return;
+  const elapsed = Date.now() - offlineFrom;
+  offlineFrom   = null;
+  applyOfflineProgress(elapsed);
+  if (!gameInterval) gameInterval = setInterval(tick, TICK_MS);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) goOffline(); else goOnline();
+});
 
 // ═══════════════════════════════════
 //  PRESTIGE
@@ -828,16 +883,14 @@ function calcPP() {
 function doPrestige() {
   if (state.highestBar < MIN_PRESTIGE) return;
 
-  const earned   = calcPP();
-  const startPct = Math.min(99, uv('headStart') + auv('aHeadStart'));
+  const earned = calcPP();
 
   state.pp             += earned;
   state.totalPpEarned  += earned;
   state.totalPrestiges += 1;
   state.bars            = new Array(NUM_BARS).fill(0);
-  state.bars[0]         = startPct;
   state.completions     = new Array(NUM_BARS).fill(0);
-  state.highestBar      = startPct > 0 ? 0 : -1;
+  state.highestBar      = -1;
 
   prevPct.fill(-1);   // force full re-render
   prevComp.fill(-1);
@@ -856,6 +909,8 @@ function doPrestige() {
 // ═══════════════════════════════════
 
 function renderBars() {
+  const memBonus    = 1 + (uv('headStart') / 100) * state.totalPrestiges
+                        + (auv('aHeadStart') / 100) * state.totalAscensions;
   const transferRate = uv('transfer') * auv('aTransfer');
   for (let i = 0; i < NUM_BARS; i++) {
     if (i > 0 && domTransIn[i]) {
@@ -866,7 +921,7 @@ function renderBars() {
     if (barTurboMode[i]) {
       const comp = state.completions[i];
       // cps cascades: bar 0 drives the chain, each subsequent bar scales by transfer
-      const bar0Cps = BASE_RATE * uv('speed') * barSpeedBonus(0) * uv('multiTick') * (1000 / TICK_MS) / 100;
+      const bar0Cps = BASE_RATE * uv('speed') * auv('aSpeed') * memBonus * barSpeedBonus(0) * (uv('multiTick') + aul('aMultiTick')) * (1000 / TICK_MS) / 100;
       const cps     = bar0Cps * Math.pow(uv('transfer'), i);
       domFill[i].classList.add('turbo');
       if (domTurboLbl[i]) domTurboLbl[i].textContent = `\u26a1 ${fmt(Math.round(cps))}/s`;
@@ -879,10 +934,8 @@ function renderBars() {
           (bonusPct > 0 ? ` <span class="comp-bonus">+${fmt(bonusPct)}%</span>` : '');
       } else {
         if (comp !== prevComp[i]) {
-          const bonusPct = Math.round((Math.sqrt(barSpeedBonus(i)) - 1) * 100);
-          domCount[i].innerHTML = comp > 0
-            ? '\xd7' + fmt(comp) + (bonusPct > 0 ? ` <span class="comp-bonus">+${fmt(bonusPct)}%</span>` : '')
-            : '';
+          domCount[i].innerHTML = '\xd7' + fmt(comp);
+
         }
       }
       prevPct[i]  = -99; // sentinel so leaving turbo forces a re-render
@@ -943,7 +996,9 @@ function renderStats() {
   document.getElementById('sap').textContent       = fmt(state.ap);
   document.getElementById('sasc').textContent      = fmt(state.totalAscensions);
 
-  const cps = BASE_RATE * uv('speed') * auv('aSpeed') * (uv('multiTick') + aul('aMultiTick')) * barSpeedBonus(0) * (1000 / TICK_MS) / 100;
+  const memBonus = 1 + (uv('headStart') / 100) * state.totalPrestiges
+                     + (auv('aHeadStart') / 100) * state.totalAscensions;
+  const cps = BASE_RATE * uv('speed') * auv('aSpeed') * memBonus * (uv('multiTick') + aul('aMultiTick')) * barSpeedBonus(0) * (1000 / TICK_MS) / 100;
   document.getElementById('srate').textContent = fmt(cps) + '/s';
 }
 
@@ -965,7 +1020,7 @@ function renderPrestige() {
     btn.textContent  = '✦ PRESTIGE ✦';
     const need = MIN_PRESTIGE - state.highestBar;
     hint.textContent = state.highestBar < 0
-      ? 'Complete Bar 5 to unlock prestige'
+      ? 'Complete Bar 1 to unlock prestige'
       : `${need} more bar${need !== 1 ? 's' : ''} needed to prestige`;
   }
 }
@@ -1229,6 +1284,7 @@ function save() {
       ap:              state.ap,
       totalAscensions: state.totalAscensions,
       ascUpgrades:     { ...state.ascUpgrades },
+      savedAt:         Date.now(),
     }));
   } catch (e) {}
 }
@@ -1237,7 +1293,7 @@ function load() {
   try {
     // Migrate from v3 save if v4 doesn't exist yet
     const raw = localStorage.getItem('ca100_v4') || localStorage.getItem('ca100_v3');
-    if (!raw) return;
+    if (!raw) return 0;
     const d = JSON.parse(raw);
 
     const padArr = (arr, len) => {
@@ -1256,7 +1312,8 @@ function load() {
     state.totalAscensions = d.totalAscensions ?? 0;
     UPGRADES.forEach(u => { state.upgrades[u.id] = d.upgrades?.[u.id] ?? 0; });
     ASCENSION_UPGRADES.forEach(u => { state.ascUpgrades[u.id] = d.ascUpgrades?.[u.id] ?? 0; });
-  } catch (e) { console.warn('Load failed', e); }
+    return d.savedAt ? Date.now() - d.savedAt : 0;
+  } catch (e) { console.warn('Load failed', e); return 0; }
 }
 
 function resetGame() {
@@ -1280,15 +1337,16 @@ function resetGame() {
 //  INIT
 // ═══════════════════════════════════
 
-load();
+const offlineMs = load();
 buildBarList();
 buildShop();
 renderBars();
 renderStats();
 renderPrestige();
 renderAscension();
-setInterval(tick, TICK_MS);
+gameInterval = setInterval(tick, TICK_MS);
 setInterval(save, 5000);
+if (offlineMs > 5000) setTimeout(() => applyOfflineProgress(offlineMs), 200);
 </script>
 </body>
 </html>
