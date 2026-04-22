@@ -463,6 +463,13 @@ body {
       </div>
     </div>
 
+    <!-- Catchup banner -->
+    <div id="catchup-banner" style="display:none;background:#0d1e2e;border:1px solid #60aaff55;border-radius:6px;padding:6px 14px;margin:4px 0;font-family:monospace;font-size:0.85em;color:#60aaff;align-items:center;gap:10px;">
+      <span>⏩ Catching up…</span>
+      <div style="flex:1;background:#333;border-radius:4px;overflow:hidden;height:7px;"><div id="catchup-bar" style="height:100%;width:0%;background:#60aaff;"></div></div>
+      <span id="catchup-pct">0%</span>
+    </div>
+
     <!-- Chain -->
     <div class="panel">
       <div class="panel-title">
@@ -510,7 +517,7 @@ body {
 const NUM_BARS       = 100;
 const TICK_MS        = 50;    // 20 ticks/sec
 const BASE_RATE      = 1.0;   // %/tick for bar 0
-const BASE_TRANSFER  = 0.02;  // fraction passed to next bar per completion
+const BASE_TRANSFER  = 0.04;  // fraction passed to next bar per completion
 const MIN_PRESTIGE   = 1;     // 0-indexed: bar index 4 = Bar 5 must complete first
 const TURBO_CPS_THRESHOLD = 5; // completions/s: each bar independently enters turbo at this rate
 
@@ -546,23 +553,23 @@ const UPGRADES = [
     id: 'speed',
     name: '⚡ Energy Surge',
     desc: 'Multiplies base fill rate',
-    baseCost: 1, costMult: 1.7, maxLevel: 30,
-    effLabel: l => `${(1 + l * 0.3).toFixed(1)}× speed`,
-    val:      l => 1 + l * 0.3,
+    baseCost: 1, costMult: 1.4, maxLevel: 30,
+    effLabel: l => `${(1 + l * 0.5).toFixed(1)}× speed`,
+    val:      l => 1 + l * 0.5,
   },
   {
     id: 'transfer',
     name: '🔗 Chain Efficiency',
     desc: 'Increases transfer rate between bars',
-    baseCost: 2, costMult: 2.1, maxLevel: 25,
-    effLabel: l => `${Math.round((BASE_TRANSFER + l * 0.01) * 100)}% per fill`,
-    val:      l => BASE_TRANSFER + l * 0.01,
+    baseCost: 2, costMult: 1.8, maxLevel: 25,
+    effLabel: l => `${Math.round((BASE_TRANSFER + l * 0.03836) * 100)}% per fill`,
+    val:      l => BASE_TRANSFER + l * 0.03836,
   },
   {
     id: 'multiTick',
     name: '⚙️ Cascade Engine',
     desc: 'Processes multiple ticks per frame',
-    baseCost: 10, costMult: 3.0, maxLevel: 8,
+    baseCost: 5, costMult: 2.5, maxLevel: 8,
     effLabel: l => `${1 + l}× tick rate`,
     val:      l => 1 + l,
   },
@@ -570,7 +577,7 @@ const UPGRADES = [
     id: 'ppBonus',
     name: '🌟 Prestige Aura',
     desc: 'Multiplies PP earned on prestige',
-    baseCost: 3, costMult: 1.9, maxLevel: 25,
+    baseCost: 3, costMult: 1.5, maxLevel: 25,
     effLabel: l => `${(1 + l * 0.5).toFixed(1)}× PP`,
     val:      l => 1 + l * 0.5,
   },
@@ -686,20 +693,6 @@ const aucost = id => Math.ceil(findAU(id).baseCost * Math.pow(findAU(id).costMul
 //  +5% per decade milestone (×10, ×100, ×1000 …)
 // ═══════════════════════════════════
 
-function barSpeedBonus(i) {
-  const c = state.completions[i];
-  let bonus = 1;
-  let unitBonus = 0.01;
-  let divisor = 10;
-
-  while (divisor <= c) {
-    bonus += Math.floor(c / divisor) * unitBonus;
-    divisor *= 10;
-    unitBonus *= 10;
-  }
-
-  return bonus;
-}
 
 // ═══════════════════════════════════
 //  TICK
@@ -711,11 +704,11 @@ let offlineMode    = false;
 function computeTick() {
   notifsThisTick = 0;
   const numTicks  = uv('multiTick') + aul('aMultiTick');
-  const memBonus  = 1 + (uv('headStart') / 100) * state.totalPrestiges
-                      + (auv('aHeadStart') / 100) * state.totalAscensions;
+  const memBonus  = Math.min(50, 1 + (uv('headStart') / 100) * state.totalPrestiges
+                      + (auv('aHeadStart') / 100) * state.totalAscensions);
   const speed     = uv('speed') * auv('aSpeed') * memBonus;
   const transfer = uv('transfer') * auv('aTransfer');
-  const bar0Rate = BASE_RATE * speed * barSpeedBonus(0); // %/inner-tick for bar 0
+  const bar0Rate = BASE_RATE * speed; // %/inner-tick for bar 0
 
   // Reset all turbo flags
   for (let i = 0; i < NUM_BARS; i++) barTurboMode[i] = false;
@@ -723,7 +716,7 @@ function computeTick() {
   // ── Phase 1: Turbo chain ──
   // Each bar enters turbo independently when its smooth theoretical CPS >= threshold.
   // Smooth CPS avoids flicker caused by the discrete (integer) completions-per-tick cascade.
-  const bar0Cps = BASE_RATE * speed * barSpeedBonus(0) * numTicks * (1000 / TICK_MS) / 100;
+  const bar0Cps = BASE_RATE * speed * numTicks * (1000 / TICK_MS) / 100;
   let rateIn = bar0Rate * numTicks; // %/outer-tick arriving at bar 0
 
   let turboFrontier = -1;
@@ -750,7 +743,7 @@ function computeTick() {
         }
       }
     }
-    rateIn = transfer * 100 * comps * Math.sqrt(barSpeedBonus(i)); // rate passed to next bar
+    rateIn = transfer * 100 * comps; // rate passed to next bar
   }
 
   // Carry leftover rate into the first non-turbo bar so inner ticks pick it up
@@ -779,13 +772,22 @@ function computeTick() {
           }
         }
       }
-      // Bonus only applies to bar 0 — no barSpeedBonus on transfer
-      if (i < NUM_BARS - 1) state.bars[i + 1] += transfer * 100 * count * Math.sqrt(barSpeedBonus(i));
+      if (i < NUM_BARS - 1) state.bars[i + 1] += transfer * 100 * count;
     }
   }
 }
 
 function tick() {
+  if (catchupRemaining > 0) {
+    const extra = Math.min(CATCHUP_PER_TICK, catchupRemaining);
+    offlineMode = true;
+    for (let i = 0; i < extra; i++) computeTick();
+    catchupRemaining -= extra;
+    if (catchupRemaining === 0) {
+      offlineMode = false;
+      notify('✓ All caught up!', '#60aaff');
+    }
+  }
   computeTick();
   renderBars();
   renderStats();
@@ -797,7 +799,10 @@ function tick() {
 //  OFFLINE PROGRESS
 // ═══════════════════════════════════
 
-const MAX_OFFLINE_MS = 1 * 60 * 60 * 1000; // 1-hour cap
+const MAX_OFFLINE_MS    = 4 * 60 * 60 * 1000; // 4-hour cap
+const CATCHUP_PER_TICK  = 50; // extra ticks processed per real tick during catchup (~5 min to burn 4h)
+let catchupRemaining = 0;
+let catchupTotal     = 0;
 let offlineFrom = null;
 let gameInterval = null;
 
@@ -807,20 +812,14 @@ function applyOfflineProgress(elapsedMs) {
   const missedTicks = Math.floor(cappedMs / TICK_MS);
   if (missedTicks < 1) return;
 
-  offlineMode = true;
-  for (let t = 0; t < missedTicks; t++) computeTick();
-  offlineMode = false;
-
-  renderBars();
-  renderStats();
-  renderPrestige();
-  renderAscension();
+  catchupRemaining = missedTicks;
+  catchupTotal     = missedTicks;
 
   const secs    = Math.round(cappedMs / 1000);
   const timeStr = secs >= 3600
     ? `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`
     : secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
-  notify(`⏱ Offline ${timeStr} — progress applied!`, '#60aaff');
+  notify(`⏱ Offline ${timeStr} — catching up at ${CATCHUP_PER_TICK + 1}× speed`, '#60aaff');
 }
 
 function goOffline() {
@@ -847,7 +846,7 @@ document.addEventListener('visibilitychange', () => {
 // ═══════════════════════════════════
 
 function calcAP() {
-  return Math.max(1, Math.floor(Math.sqrt(state.totalPpEarned / 50000)));
+  return Math.max(2, Math.floor(Math.sqrt(state.totalPpEarned / 200000)));
 }
 
 function doAscension() {
@@ -876,8 +875,8 @@ function doAscension() {
 function calcPP() {
   const level = state.highestBar + 1;
   const bonus = uv('ppBonus') * auv('aPpBonus');
-  if ((Math.floor(Math.pow(level,2.5) / 8) * bonus) < 1) return Math.floor(bonus);
-  return ((Math.floor(Math.pow(level,2.5)) / 8) * bonus);
+  if ((Math.floor(Math.pow(level,2.5)/4 ) * bonus) < 1) return Math.floor(bonus);
+  return ((Math.floor(Math.pow(level,2.5)/4 ) ) * bonus);
 }
 
 function doPrestige() {
@@ -909,29 +908,25 @@ function doPrestige() {
 // ═══════════════════════════════════
 
 function renderBars() {
-  const memBonus    = 1 + (uv('headStart') / 100) * state.totalPrestiges
-                        + (auv('aHeadStart') / 100) * state.totalAscensions;
+  const memBonus    = Math.min(50, 1 + (uv('headStart') / 100) * state.totalPrestiges
+                        + (auv('aHeadStart') / 100) * state.totalAscensions);
   const transferRate = uv('transfer') * auv('aTransfer');
   for (let i = 0; i < NUM_BARS; i++) {
     if (i > 0 && domTransIn[i]) {
-      const transAmt = transferRate * 100 * Math.sqrt(barSpeedBonus(i - 1));
+      const transAmt = transferRate * 100;
       domTransIn[i].textContent = '+' + transAmt.toFixed(2) + '%';
     }
     // ── Turbo mode ──
     if (barTurboMode[i]) {
       const comp = state.completions[i];
       // cps cascades: bar 0 drives the chain, each subsequent bar scales by transfer
-      const bar0Cps = BASE_RATE * uv('speed') * auv('aSpeed') * memBonus * barSpeedBonus(0) * (uv('multiTick') + aul('aMultiTick')) * (1000 / TICK_MS) / 100;
+      const bar0Cps = BASE_RATE * uv('speed') * auv('aSpeed') * memBonus * (uv('multiTick') + aul('aMultiTick')) * (1000 / TICK_MS) / 100;
       const cps     = bar0Cps * Math.pow(uv('transfer'), i);
       domFill[i].classList.add('turbo');
       if (domTurboLbl[i]) domTurboLbl[i].textContent = `\u26a1 ${fmt(Math.round(cps))}/s`;
       domPct[i].textContent = 'MAX';
       if (i === 0) {
-        // Speed bonus label only on bar 0
-        const bonus    = barSpeedBonus(0);
-        const bonusPct = Math.round((bonus - 1) * 100);
-        domCount[0].innerHTML = '\xd7' + fmt(comp) +
-          (bonusPct > 0 ? ` <span class="comp-bonus">+${fmt(bonusPct)}%</span>` : '');
+        domCount[0].innerHTML = '\xd7' + fmt(comp);
       } else {
         if (comp !== prevComp[i]) {
           domCount[i].innerHTML = '\xd7' + fmt(comp);
@@ -963,11 +958,7 @@ function renderBars() {
     domFill[i].style.width = pct.toFixed(2) + '%';
     domPct[i].textContent  = pct.toFixed(1) + '%';
     if (i === 0) {
-        // Speed bonus label only on bar 0
-        const bonus    = barSpeedBonus(0);
-        const bonusPct = Math.round((bonus - 1) * 100);
-        domCount[0].innerHTML = '\xd7' + fmt(comp) +
-          (bonusPct > 0 ? ` <span class="comp-bonus">+${fmt(bonusPct)}%</span>` : '');
+        domCount[0].innerHTML = '\xd7' + fmt(comp);
       } else if (comp > 0) {
           domCount[i].innerHTML = '\xd7' + fmt(comp);
         
@@ -996,10 +987,20 @@ function renderStats() {
   document.getElementById('sap').textContent       = fmt(state.ap);
   document.getElementById('sasc').textContent      = fmt(state.totalAscensions);
 
-  const memBonus = 1 + (uv('headStart') / 100) * state.totalPrestiges
-                     + (auv('aHeadStart') / 100) * state.totalAscensions;
-  const cps = BASE_RATE * uv('speed') * auv('aSpeed') * memBonus * (uv('multiTick') + aul('aMultiTick')) * barSpeedBonus(0) * (1000 / TICK_MS) / 100;
+  const memBonus = Math.min(50, 1 + (uv('headStart') / 100) * state.totalPrestiges
+                     + (auv('aHeadStart') / 100) * state.totalAscensions);
+  const cps = BASE_RATE * uv('speed') * auv('aSpeed') * memBonus * (uv('multiTick') + aul('aMultiTick')) * (1000 / TICK_MS) / 100;
   document.getElementById('srate').textContent = fmt(cps) + '/s';
+
+  const banner = document.getElementById('catchup-banner');
+  if (catchupRemaining > 0) {
+    banner.style.display = 'flex';
+    const pct = Math.round((1 - catchupRemaining / catchupTotal) * 100);
+    document.getElementById('catchup-bar').style.width = pct + '%';
+    document.getElementById('catchup-pct').textContent = pct + '%';
+  } else {
+    banner.style.display = 'none';
+  }
 }
 
 // ═══════════════════════════════════
